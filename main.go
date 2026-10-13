@@ -4,10 +4,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"frotago-payments-api/config"
 	"frotago-payments-api/handlers"
+	"frotago-payments-api/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -16,6 +18,9 @@ import (
 
 func main() {
 	_ = godotenv.Load()
+	if len(os.Getenv("JWT_SECRET")) < 32 {
+		log.Fatal("JWT_SECRET deve ter pelo menos 32 caracteres")
+	}
 
 	// Conecta ao PostgreSQL (fleet_db)
 	config.ConnectDB()
@@ -25,9 +30,18 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.Default()
+	allowedOrigins := strings.FieldsFunc(os.Getenv("ALLOWED_ORIGINS"), func(r rune) bool {
+		return r == ',' || r == ';'
+	})
+	for i := range allowedOrigins {
+		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
+	}
+	if len(allowedOrigins) == 0 {
+		allowedOrigins = []string{"http://localhost:5173"}
+	}
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -46,12 +60,14 @@ func main() {
 	})
 
 	api := r.Group("/api/payments")
+	api.Use(middleware.JWTAuthMiddleware())
 	{
-		api.POST("/charge", handlers.ChargeTrip)
+		api.POST("/charge", middleware.RequireRole("admin", "member"), handlers.ChargeTrip)
 		api.GET("/:id/status", handlers.GetPaymentStatus)
-		api.POST("/webhook/multicaixa", handlers.MulticaixaWebhook)
 		api.GET("/wallet/:driverId", handlers.GetDriverWallet)
+		api.POST("/:id/confirm-cash", middleware.RequireRole("admin"), handlers.ConfirmCashPayment)
 	}
+	r.POST("/api/payments/webhook/multicaixa", handlers.MulticaixaWebhook)
 
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -1,5 +1,14 @@
 💳 API 4: Gateway de Pagamentos & Cobranças em Golang (graaa-golang-payments-api)
 
+## Configuração de segurança
+
+- Defina `JWT_SECRET` igual ao segredo do auth API e com pelo menos 32 bytes. Cobranças, consulta de estado e carteiras exigem JWT de acesso; um motorista só pode consultar a própria carteira e os pagamentos das corridas associadas.
+- Defina `ALLOWED_ORIGINS` como a lista separada por vírgulas das origens exatas do frontend; sem configuração, apenas `http://localhost:5173` é autorizado.
+- Defina `MULTICAIXA_WEBHOOK_SECRET` como segredo aleatório de pelo menos 32 bytes, partilhado somente com o provedor. O callback exige `X-Multicaixa-Signature: sha256=<HMAC-SHA256 do corpo HTTP bruto>`, valida o montante e só permite transições a partir de `pending`.
+- Defina `FLEET_PAYMENT_TOKEN` com um segredo aleatório independente e partilhe-o apenas com a fleet API. Se a sincronização estiver indisponível, a cobrança permanece confirmada e a resposta informa `fleetSync: pending`; callbacks repetidos tentam sincronizar novamente.
+- Pagamentos em dinheiro permanecem `pending` até um administrador autenticado chamar `POST /api/payments/:id/confirm-cash`. Não marque pagamentos como liquidados a partir do pedido de cobrança do cliente.
+- A implementação Multicaixa neste repositório é uma simulação. Uma assinatura HMAC só autentica um provedor que detenha o segredo; antes de produção, integrar com a confirmação oficial EMIS e validar a transação diretamente com o gateway.
+
 Focada no mercado financeiro angolano e internacional:
 
     Multicaixa Express (EMIS GPO / QR Code / Referência Bancária): Débito direto em Kwanzas (AOA) via número de telefone do passageiro.
